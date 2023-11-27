@@ -1,6 +1,8 @@
 import pygame, sys
 import numpy as np
 
+from Memento import Memento
+
 BLACK = (0, 0, 0)
 WHITE = (255, 255, 255)
 GREY = (64, 64, 64)
@@ -39,7 +41,7 @@ class Person(pygame.sprite.Sprite):
         super().__init__()
         self.image = self.get_circle_image(color, radius)
         self.image.fill(BACKGROUND)
-
+        self.color = color
         self.rect = self.image.get_rect()
         self.pos = np.array([x, y], dtype=np.float64)
         self.vel = np.asarray(velocity, dtype=np.float64)
@@ -51,19 +53,41 @@ class Person(pygame.sprite.Sprite):
         self.WIDTH = width
         self.HEIGHT = height
         self.symptomatic = symptomatic
-
-        self.resistant = np.random.choice([True, False])
-        # self.resistant = True
-        if self.resistant:
-            self.infected = False  # Osoba odporna na zakażenie jest zdrowa
-            self.symptomatic = False  # Osoba odporna na zakażenie nie ma objawów
-        else:
-            self.infected = np.random.choice([True, False])  # Losowe zakażenie
-            self.symptomatic = np.random.choice([True, False])  # Losowe wystąpienie
+        self.resistant = False
 
         pygame.draw.circle(
             self.image, color, (radius, radius), radius
         )
+
+    # def create_memento(self):
+    #     return {
+    #         'color': self.color,
+    #         'pos': self.pos.copy()
+    #     }
+    #
+    # def set_memento(self, memento):
+    #     self.color = memento['color']
+    #     self.pos = memento['pos'].copy()
+
+    def create_memento(self):
+        return Memento(self.color, self.pos)
+
+    def set_memento(self, memento):
+        self.color = memento.get_color()
+        self.pos = memento.get_position()
+
+    def change_state(self, new_state):
+        if new_state == "Susceptible":
+            self.state = self.susceptible_state
+        elif new_state == "Infected":
+            self.state = self.infected_state
+        elif new_state == "Recovered":
+            self.state = self.recovered_state
+        elif new_state == "Resistant":
+            self.state = self.resistant_state
+
+    def handle_health(self):
+        self.state.handle_state(self)
 
     def randomize_movement(self, max_speed=2.5, change_direction_prob=0.05):
         if np.random.rand() < change_direction_prob:  # Sprawdzenie szansy na zmianę kierunku

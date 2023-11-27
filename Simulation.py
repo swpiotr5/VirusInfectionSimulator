@@ -1,7 +1,12 @@
+import pickle
+
 import pygame, sys
 import numpy as np
 
+from HealthyState import HealthyState
+from InfectedState import InfectedState
 from Person import Person, RED, ORANGE, SEAGREEN, GREEN, BACKGROUND, BLUE
+from RecoveredState import RecoveredState
 
 
 class Simulation:
@@ -22,6 +27,34 @@ class Simulation:
         self.T = 10000
         self.cycles_to_fate = 20
         self.mortality_rate = 0.0
+
+        self.infected_state = InfectedState()
+        self.healthy_state = HealthyState()
+        self.recovered_state = RecoveredState()
+
+    def save_person_states(self):
+        person_mementos = {}
+        for container in [self.susceptible_container, self.infected_container, self.recovered_container,
+                          self.resistant_container]:
+            for person in container:
+                person_mementos[id(person)] = person.create_memento()
+
+        with open("person_states.pkl", "wb") as file:
+            pickle.dump(person_mementos, file)
+        print("Zapisano stany osób do pliku.")
+
+    def load_person_states(self):
+        try:
+            with open("person_states.pkl", "rb") as file:
+                person_mementos = pickle.load(file)
+                for container in [self.susceptible_container, self.infected_container, self.recovered_container,
+                                  self.resistant_container]:
+                    for person in container:
+                        if id(person) in person_mementos:
+                            person.set_memento(person_mementos[id(person)])
+            print("Wczytano stany osób z pliku.")
+        except FileNotFoundError:
+            print("Nie znaleziono pliku ze stanami osób.")
 
     def spawn_new_individuals(self):
         side = np.random.choice(["top", "bottom", "left", "right"])
@@ -79,15 +112,15 @@ class Simulation:
         pygame.init()
         screen = pygame.display.set_mode([self.WIDTH, self.HEIGHT])
 
+        is_paused = False  # Zmienna do sprawdzania, czy symulacja jest zatrzymana
+        running = True  # Zmienna do kontrolowania działania głównej pętli gry
+
         for i in range(self.n_susceptible):
             x = np.random.randint(0, self.WIDTH + 1)
             y = np.random.randint(0, self.HEIGHT + 1)
             vel = np.random.rand(2) * 2 - 1
-            resistant = np.random.choice([True, False])
-            if resistant:
-                res_color = SEAGREEN
-            else:
-                res_color = GREEN
+            res_color, resistant = self.healthy_state.handle_state()
+
             guy = Person(
                 x,
                 y,
@@ -132,66 +165,71 @@ class Simulation:
 
 
         clock = pygame.time.Clock()
-
-        for i in range(self.T):
+        i = 0
+        while running:
+            i += 1
             for event in pygame.event.get():
                 if event.type == pygame.QUIT:
-                    sys.exit()
+                    running = False  # Zakończ pętlę gry po zamknięciu okna
+                if event.type == pygame.KEYDOWN:
+                    if event.key == pygame.K_SPACE:
+                        is_paused = not is_paused  # Zatrzymaj lub wznow symulację po naciśnięciu spacji
+                    if event.key == pygame.K_s:
+                        self.save_person_states()  # Zapis stanów osób po naciśnięciu "S"
+                    elif event.key == pygame.K_w:
+                        self.load_person_states()
+            if not is_paused:
+                self.all_container.update()
+                screen.fill(BACKGROUND)
 
-            self.all_container.update()
+                # New infections
+                collision_group = pygame.sprite.groupcollide(
+                    self.susceptible_container,
+                    self.infected_container,
+                    True,
+                    False,
+                )
 
-            screen.fill(BACKGROUND)
+                for guy in collision_group:
+                    other_guy = collision_group[guy][0]  # Wybierz pierwszego zderzającego się
+                    if other_guy.symptomatic:
+                        infected = True
+                    else:
+                        infected = np.random.choice([True, False])
+                    if infected:
+                        new_guy_color, symptomatic = self.infected_state.handle_state()
+                    else:
+                        # resistant = np.random.choice([True, False])
+                        resistant = guy.resistant
+                        new_guy_color = SEAGREEN if resistant else GREEN
 
-            # New infections
-            collision_group = pygame.sprite.groupcollide(
-                self.susceptible_container,
-                self.infected_container,
-                True,
-                False,
-            )
+                    new_guy = guy.respawn(new_guy_color, symptomatic if infected else None)
+                    new_guy.vel *= -1
+                    new_guy.killswitch(self.cycles_to_fate, self.mortality_rate)
 
-            for guy in collision_group:
-                other_guy = collision_group[guy][0]  # Wybierz pierwszego zderzającego się
-                if other_guy.symptomatic:
-                    infected = True
-                else:
-                    infected = np.random.choice([True, False])
+                    if infected:
+                        self.infected_container.add(new_guy)
+                    else:
+                        self.susceptible_container.add(new_guy)
+                    self.all_container.add(new_guy)
 
-                if infected:
-                    symptomatic = np.random.choice([True, False])
-                    new_guy_color = RED if symptomatic else ORANGE
-                else:
-                    # resistant = np.random.choice([True, False])
-                    resistant = guy.resistant
-                    new_guy_color = SEAGREEN if resistant else GREEN
+                # Recoveries
+                recovered = [guy for guy in self.infected_container if guy.recovered]
+                for guy in recovered:
+                    new_guy_color = self.recovered_state.handle_state()
+                    new_guy = guy.respawn(new_guy_color)
+                    self.recovered_container.add(new_guy)
+                    self.all_container.add(new_guy)
 
-                new_guy = guy.respawn(new_guy_color, symptomatic if infected else None)
-                new_guy.vel *= -1
-                new_guy.killswitch(self.cycles_to_fate, self.mortality_rate)
+                self.infected_container.remove(*recovered)
+                self.all_container.remove(*recovered)
 
-                if infected:
-                    self.infected_container.add(new_guy)
-                else:
-                    self.susceptible_container.add(new_guy)
-                self.all_container.add(new_guy)
+                self.all_container.draw(screen)
 
-            # Recoveries
-            recovered = [guy for guy in self.infected_container if guy.recovered]
-            for guy in recovered:
-                new_guy_color = BLUE
-                new_guy = guy.respawn(new_guy_color)
-                self.recovered_container.add(new_guy)
-                self.all_container.add(new_guy)
+                if i % 5 == 0:
+                    self.spawn_new_individuals()
 
-            self.infected_container.remove(*recovered)
-            self.all_container.remove(*recovered)
-
-            self.all_container.draw(screen)
-
-            if i % 5 == 0:
-                self.spawn_new_individuals()
-
-            pygame.display.flip()
-            clock.tick(25)
+                pygame.display.flip()
+                clock.tick(25)
 
         pygame.quit()
