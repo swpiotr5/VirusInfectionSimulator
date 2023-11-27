@@ -59,16 +59,6 @@ class Person(pygame.sprite.Sprite):
             self.image, color, (radius, radius), radius
         )
 
-    # def create_memento(self):
-    #     return {
-    #         'color': self.color,
-    #         'pos': self.pos.copy()
-    #     }
-    #
-    # def set_memento(self, memento):
-    #     self.color = memento['color']
-    #     self.pos = memento['pos'].copy()
-
     def create_memento(self):
         return Memento(self.color, self.pos)
 

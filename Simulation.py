@@ -101,7 +101,6 @@ class Simulation:
                 self.susceptible_container.add(person)  # Dodanie do kontenera podatnych
         self.all_container.add(person)  # Dodanie do kontenera wszystkich
 
-        # self.total_population += 1  # Zwiększenie całkowitej liczby populacji
 
     def start(self, randomize=False):
 
@@ -162,7 +161,6 @@ class Simulation:
             )
             self.infected_container.add(guy)
             self.all_container.add(guy)
-
 
         clock = pygame.time.Clock()
         i = 0
